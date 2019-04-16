@@ -84,12 +84,12 @@ class TapTester(object):
         return stream
 
     def tapDetected(self):
-        print "Tap!"
+        print ("Tap!")
 
     def listen(self):
         try:
             block = self.stream.read(INPUT_FRAMES_PER_BLOCK)
-        except IOError, e:
+        except IOError as e:
             # dammit. 
             self.errorcount += 1
             print( "(%d) Error recording: %s"%(self.errorcount,e) )
