@@ -2,6 +2,7 @@
 from samplebase import SampleBase
 from time import sleep
 from functions import *
+from layer2 import *
 
 class HypnoColors(SampleBase):
     def __init__(self, *args, **kwargs):
@@ -12,12 +13,21 @@ class HypnoColors(SampleBase):
         #self.matrix.Fill(0xFF, 0xFF, 0) # Fills all LEDs
         #sleep(1)
         WhiteLines(self)
+        sleep(.25)
+        #FillMe(self, 0x0, 0x0, 0x0)
+        GreenThickLines(self, 0x0, 255, 0x0)
+        #offset_canvas.Fill( 0x0, 0x0, 0x0)
+        #offset_canvas = self.matrix.SwapOnVSync(offset_canvas)
         #SinglePixel(self)        
-        #sleep(1)
-        #ArtsyCanvas(self, 0, 0, 255)
-        
+        dimmer = 0
         while(True):
-            NOP=0
+            dimmer += 1
+            WhiteLines(self)
+            sleep(.25)
+            GreenThickLines(self, 0x0, (255-dimmer), 0x0)
+            sleep(.5)
+            dimmer%=255
+            
             
 if __name__ == "__main__":
     hypno_colors = HypnoColors()
