@@ -1,60 +1,88 @@
 #!/usr/bin/env python
-from samplebase import SampleBase
+import pyaudio
+import struct
 import math
 
+from samplebase import SampleBase
+import HypnoColors
 
-class RotatingBlockGenerator(SampleBase):
-    def __init__(self, *args, **kwargs):
-        super(RotatingBlockGenerator, self).__init__(*args, **kwargs)
+INITIAL_TAP_THRESHOLD = 0.010
+FORMAT = pyaudio.paInt16 
+SHORT_NORMALIZE = (1.0/32768.0)
+CHANNELS = 2
+RATE = 44100  
+INPUT_BLOCK_TIME = 0.05
+INPUT_FRAMES_PER_BLOCK = int(RATE*INPUT_BLOCK_TIME)
 
-    def rotate(self, x, y, angle):
-        return {
-            "new_x": x * math.cos(angle) - y * math.sin(angle),
-            "new_y": x * math.sin(angle) + y * math.cos(angle)
-        }
+OVERSENSITIVE = 15.0/INPUT_BLOCK_TIME                    
 
-    def scale_col(self, val, lo, hi):
-        if val < lo:
-            return 0
-        if val > hi:
-            return 255
-        return 255 * (val - lo) / (hi - lo)
+UNDERSENSITIVE = 120.0/INPUT_BLOCK_TIME # if we get this many quiet blocks in a row, decrease the threshold
 
-    def run(self):
-        cent_x = self.matrix.width / 2
-        cent_y = self.matrix.height / 2
+MAX_TAP_BLOCKS = 0.15/INPUT_BLOCK_TIME # if the noise was longer than this many blocks, it's not a 'tap'
 
-        rotate_square = min(self.matrix.width, self.matrix.height) * 1.41
-        min_rotate = cent_x - rotate_square / 2
-        max_rotate = cent_x + rotate_square / 2
+def get_rms(block):
 
-        display_square = min(self.matrix.width, self.matrix.height) * 0.7
-        min_display = cent_x - display_square / 2
-        max_display = cent_x + display_square / 2
+    # RMS amplitude is defined as the square root of the 
+    # mean over time of the square of the amplitude.
+    # so we need to convert this string of bytes into 
+    # a string of 16-bit samples...
 
-        deg_to_rad = 2 * 3.14159265 / 360
-        rotation = 0
-        offset_canvas = self.matrix.CreateFrameCanvas()
+    # we will get one short out for each 
+    # two chars in the string.
+    count = len(block)/2
+    format = "%dh"%(count)
+    shorts = struct.unpack( format, block )
 
-        while True:
-            rotation += 1
-            rotation %= 360
+    # iterate over the block.
+    sum_squares = 0.0
+    for sample in shorts:
+    # sample is a signed short in +/- 32768. 
+    # normalize it to 1.0
+        n = sample * SHORT_NORMALIZE
+        sum_squares += n*n
 
-            for x in range(int(min_rotate), int(max_rotate)):
-                for y in range(int(min_rotate), int(max_rotate)):
-                    ret = self.rotate(x - cent_x, y - cent_x, deg_to_rad * rotation)
-                    rot_x = ret["new_x"]
-                    rot_y = ret["new_y"]
+    return math.sqrt( sum_squares / count )
 
-                    if x >= min_display and x < max_display and y >= min_display and y < max_display:
-                        offset_canvas.SetPixel(rot_x + cent_x, rot_y + cent_y, self.scale_col(x, min_display, max_display), 255 - self.scale_col(y, min_display, max_display), self.scale_col(y, min_display, max_display))
-                    else:
-                        offset_canvas.SetPixel(rot_x + cent_x, rot_y + cent_y, 0, 0, 0)
 
-            offset_canvas = self.matrix.SwapOnVSync(offset_canvas)
+##################################
+LEDMatrix = self.matrix.CreateFrameCanvas()
+LEDMatrix = self.matrix.Fill(255, 255, 255)
 
-# Main function
-if __name__ == "__main__":
-    rotating_block_generator = RotatingBlockGenerator()
-    if (not rotating_block_generator.process()):
-        rotating_block_generator.print_help()
+
+pa = pyaudio.PyAudio()                                 #]
+                                                       #|
+stream = pa.open(format = FORMAT,                      #|
+         channels = CHANNELS,                          #|---- You always use this in pyaudio...
+         rate = RATE,                                  #|
+         input = True,                                 #|
+         frames_per_buffer = INPUT_FRAMES_PER_BLOCK)   #]
+
+tap_threshold = INITIAL_TAP_THRESHOLD                  #]
+noisycount = MAX_TAP_BLOCKS+1                          #|---- Variables for noise detector...
+quietcount = 0                                         #|
+errorcount = 0                                         #]         
+
+for i in range(1000):
+    try:                                                    #]
+        block = stream.read(INPUT_FRAMES_PER_BLOCK)         #|
+    except IOError, e:                                      #|---- just in case there is an error!
+        errorcount += 1                                     #|
+        print( "(%d) Error recording: %s"%(errorcount,e) )  #|
+        noisycount = 1                                      #]
+
+    amplitude = get_rms(block)
+    if amplitude > tap_threshold: # if its too loud...
+        quietcount = 0
+        noisycount += 1
+        if noisycount > OVERSENSITIVE:
+            tap_threshold *= 1.1 # turn down the sensitivity
+
+    else: # if its to quiet...
+
+        if 1 <= noisycount <= MAX_TAP_BLOCKS:
+            print 'tap!'
+            LEDMatrix.
+        noisycount = 0
+        quietcount += 1
+        if quietcount > UNDERSENSITIVE:
+            tap_threshold *= 0.9 # turn up the sensitivity
